@@ -1,0 +1,18 @@
+{
+	"name": "@nianyi-wang/automatic-constraint-cluster",
+	"author": "Nianyi Wang<wangnianyi2001@outloook.com>",
+	"type": "module",
+	"main": "./build/main.mjs",
+	"files": ["./build/**/*"],
+	"scripts": {
+		"clean": "rm -rf ./build",
+		"prebuild": "npm run clean",
+		"build": "npx tsc",
+		"buildtest": "npx tsc --project ./test/tsconfig.json",
+		"pretest": "npm run buildtest",
+		"test": "node test/index.mjs"
+	},
+	"devDependencies": {
+		"typescript": "^4.9.4"
+	}
+}
