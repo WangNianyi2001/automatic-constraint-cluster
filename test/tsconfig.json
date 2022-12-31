@@ -5,6 +5,7 @@
 		"target": "ESNext",
 		"lib": ["ESNext", "DOM"],
 		"module": "ESNext",
+		"moduleResolution": "NodeNext",
 		// Grammar
 		"alwaysStrict": true
 	}
