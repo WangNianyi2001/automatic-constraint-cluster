@@ -6,8 +6,9 @@
 		"outDir": "./build",
 		// Environment
 		"target": "ESNext",
-		"lib": ["ESNext"],
+		"lib": ["ESNext", "DOM"],
 		"module": "ESNext",
+		"moduleResolution": "NodeNext",
 		// Grammar
 		"alwaysStrict": true
 	}
