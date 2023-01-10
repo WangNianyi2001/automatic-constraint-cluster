@@ -17,9 +17,28 @@ export declare class RealVariable extends Chart<number> implements Variable<numb
     FromVector(vector: RealVector): number;
     CreateChart(): Chart<number>;
 }
+export declare interface PropagatorConfig {
+    alpha: number;
+    maxError: number;
+    maxStepCount: number;
+}
+export declare interface Propagator<V> {
+    from: VariableNode<V>;
+    to: VariableNode<V>;
+    Cost: CostFunction<V>;
+    config: PropagatorConfig;
+}
+declare class VariableNode<V> {
+    readonly name: string;
+    readonly variable: Variable<V>;
+    readonly propagators: Map<VariableNode<any>, Propagator<V>>;
+    constructor(name: string, variable: Variable<V>);
+    Connect(node: VariableNode<any>, Cost: CostFunction<V>, config?: PropagatorConfig): boolean;
+}
 export declare class AutomaticConstraintCluster {
     #private;
-    AddVariable<V>(variable: Variable<V>): boolean;
-    AddConstraint<A, B>(aVar: Variable<A>, bVar: Variable<B>, Cost: (a: A, b: B) => number): boolean;
-    SetVariable<V>(variable: Variable<V>, value: V, alpha?: number, maxError?: number, maxStep?: number): boolean;
+    AddVariable<V>(name: string, variable: Variable<V>): boolean;
+    AddConstraint<A, B>(a: string, b: string, Cost: (a: A, b: B) => number, aToB?: PropagatorConfig, bToA?: PropagatorConfig): boolean;
+    SetVariable<V>(name: string, value: V): boolean;
 }
+export {};
