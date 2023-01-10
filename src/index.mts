@@ -53,66 +53,128 @@ export class RealVariable extends Chart<number> implements Variable<number> {
 	}
 }
 
-class VariableNode<V> {
-	readonly variable: Variable<V>;
-	readonly adjacency = new Map<VariableNode<any>, CostFunction<V>>();
+export declare interface PropagatorConfig {
+	alpha: number;
+	maxError: number;
+	maxStepCount: number;
+}
 
-	constructor(variable: Variable<V>) {
+const defaultPropagatorConfig: PropagatorConfig = {
+	alpha: 1e-1,
+	maxError: 1e-2,
+	maxStepCount: 1e3
+};
+
+export declare interface Propagator<V> {
+	target: VariableNode<V>;
+	Cost: CostFunction<V>;
+	config: PropagatorConfig;
+}
+
+class VariableNode<V> {
+	readonly cluster: AutomaticConstraintCluster;
+	readonly name: string;
+	readonly variable: Variable<V>;
+	readonly propagators = new Set<Propagator<any>>();
+
+	get value(): V {
+		return this.variable.value;
+	}
+	set value(value: V) {
+		this.cluster.SetValue(this, value);
+	}
+
+	constructor(cluster: AutomaticConstraintCluster, name: string, variable: Variable<V>) {
+		this.cluster = cluster;
+		this.name = name;
 		this.variable = variable;
 	}
-	Connect(node: VariableNode<any>, Cost: CostFunction<V>): boolean {
-		if(this.adjacency.has(node))
-			return false;
-		this.adjacency.set(node, Cost);
+	Connect<_V>(target: VariableNode<_V>, Cost: CostFunction<_V>, config: PropagatorConfig = defaultPropagatorConfig): boolean {
+		for(const propagator of this.propagators) {
+			if(propagator.target === target)
+				return false;
+		}
+		this.propagators.add({
+			target,
+			Cost,
+			config
+		});
 		return true;
 	}
 }
 
 export class AutomaticConstraintCluster {
-	#nodes = new Map<Variable<any>, VariableNode<any>>();
+	#nodes = new Map<string, VariableNode<any>>();
 
-	AddVariable<V>(variable: Variable<V>): boolean {
-		if(this.#nodes.has(variable))
-			return false;
-		this.#nodes.set(variable, new VariableNode(variable));
-		return true;
+	AddVariable<V>(name: string, variable: Variable<V>): VariableNode<V> | null {
+		if(this.#nodes.has(name))
+			return null;
+		const node = new VariableNode(this, name, variable);
+		this.#nodes.set(name, node);
+		return node;
 	}
-	AddConstraint<A, B>(aVar: Variable<A>, bVar: Variable<B>, Cost: (a: A, b: B) => number): boolean {
-		this.#nodes.has(aVar) || this.AddVariable(aVar);
-		this.#nodes.has(bVar) || this.AddVariable(bVar);
-		const [aNode, bNode] = [aVar, bVar].map(v => this.#nodes.get(v));
-		let connection = true;
-		connection = connection && aNode.Connect(bNode, (b: B) => Cost(aNode.variable.value, b));
-		connection = connection && bNode.Connect(aNode, (a: A) => Cost(a, bNode.variable.value));
-		return connection;
+	FindVariable<V>(name: string | VariableNode<V>): VariableNode<V> | null {
+		if(name instanceof VariableNode) {
+			if(this.#nodes.get(name.name) !== name)
+				return null;
+			return name;
+		}
+		else {
+			if(!this.#nodes.has(name))
+				return null;
+			return this.#nodes.get(name)!;
+		}
 	}
-
-	SetVariable<V>(
-		variable: Variable<V>, value: V,
-		alpha: number = 1e-1, maxError: number = 1e-2, maxStep: number = 1e3
+	AddConstraint<A, B>(
+		a: string | VariableNode<A>, b: string | VariableNode<B>,
+		Cost: (a: A, b: B) => number,
+		aToB?: PropagatorConfig,
+		bToA?: PropagatorConfig,
 	): boolean {
-		const node = this.#nodes.get(variable);
-		if(!node)
+		a = this.FindVariable<A>(a);
+		b = this.FindVariable<B>(b);
+		if(!a || !b)
 			return false;
-		// TODO: traverse through whole graph
-		variable.value = value;
-		for(const [{ variable: neighbour }, Cost] of node.adjacency.entries()) {
-			let success = false;
-			// Single step of gradient descent
-			for(let step = 0; step < maxStep; ++step) {
-				const currentCost = Cost(neighbour.value);
-				if(currentCost < maxError) {
-					success = true;
-					break;
-				}
-				// Move neighbour along gradient
-				const chart = neighbour.CreateChart();
-				const currentVector = chart.ToVector(neighbour.value);
-				const offset = chart.GradientAt(currentVector, alpha * currentCost, Cost);
-				neighbour.value = chart.FromVector(currentVector.Plus(offset) as RealVector);
-			}
-			if(!success)
+		if(a as VariableNode<any> === b as VariableNode<any>)
+			return false;
+		const aNode = a, bNode = b;
+		return [
+			aNode.Connect(b, (b: B) => Cost(aNode.variable.value, b), aToB),
+			bNode.Connect(a, (a: A) => Cost(a, bNode.variable.value), bToA)
+		].reduce((a, b) => a && b, true);
+	}
+
+	#Propagate(propagator: Propagator<any>) {
+		const { target: { variable }, Cost, config } = propagator;
+		for(let stepCount = 0; stepCount < config.maxStepCount; ++stepCount) {
+			const cost = Cost(variable.value);
+			if(cost < config.maxError)
+				return true;
+			// Move along gradient
+			const chart = variable.CreateChart();
+			const currentVector = chart.ToVector(variable.value);
+			const offset = chart.GradientAt(currentVector, config.alpha * cost, Cost);
+			variable.value = chart.FromVector(currentVector.Plus(offset) as RealVector);
+		}
+		return false;
+	}
+	SetValue<V>(target: string | VariableNode<V>, value: V): boolean {
+		target = this.FindVariable(target);
+		if(!target)
+			return false;
+		target.variable.value = value;
+		const propagated = new Set<VariableNode<any>>([target]);
+		const wavefronts = new Set<Propagator<any>>(target.propagators.values());
+		while(wavefronts.size) {
+			const wavefront = wavefronts.values().next().value as Propagator<any>;
+			if(!this.#Propagate(wavefront))
 				return false;
+			propagated.add(wavefront.target);
+			wavefronts.delete(wavefront);
+			for(const next of wavefront.target.propagators.values()) {
+				if(!propagated.has(next.target))
+					wavefronts.add(next);
+			}
 		}
 		return true;
 	}
