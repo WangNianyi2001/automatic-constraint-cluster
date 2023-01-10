@@ -28,17 +28,20 @@ export declare interface Propagator<V> {
     config: PropagatorConfig;
 }
 declare class VariableNode<V> {
+    readonly cluster: AutomaticConstraintCluster;
     readonly name: string;
     readonly variable: Variable<V>;
     readonly propagators: Set<Propagator<any>>;
-    constructor(name: string, variable: Variable<V>);
+    get value(): V;
+    set value(value: V);
+    constructor(cluster: AutomaticConstraintCluster, name: string, variable: Variable<V>);
     Connect<_V>(target: VariableNode<_V>, Cost: CostFunction<_V>, config?: PropagatorConfig): boolean;
 }
 export declare class AutomaticConstraintCluster {
     #private;
-    AddVariable<V>(name: string, variable: Variable<V>): boolean;
-    GetVariable<V>(name: string): VariableNode<V> | null;
-    AddConstraint<A, B>(a: string, b: string, Cost: (a: A, b: B) => number, aToB?: PropagatorConfig, bToA?: PropagatorConfig): boolean;
-    SetVariable<V>(name: string, value: V): boolean;
+    AddVariable<V>(name: string, variable: Variable<V>): VariableNode<V> | null;
+    FindVariable<V>(name: string | VariableNode<V>): VariableNode<V> | null;
+    AddConstraint<A, B>(a: string | VariableNode<A>, b: string | VariableNode<B>, Cost: (a: A, b: B) => number, aToB?: PropagatorConfig, bToA?: PropagatorConfig): boolean;
+    SetValue<V>(target: string | VariableNode<V>, value: V): boolean;
 }
 export {};

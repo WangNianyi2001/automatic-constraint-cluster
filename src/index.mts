@@ -72,11 +72,20 @@ export declare interface Propagator<V> {
 }
 
 class VariableNode<V> {
+	readonly cluster: AutomaticConstraintCluster;
 	readonly name: string;
 	readonly variable: Variable<V>;
 	readonly propagators = new Set<Propagator<any>>();
 
-	constructor(name: string, variable: Variable<V>) {
+	get value(): V {
+		return this.variable.value;
+	}
+	set value(value: V) {
+		this.cluster.SetValue(this, value);
+	}
+
+	constructor(cluster: AutomaticConstraintCluster, name: string, variable: Variable<V>) {
+		this.cluster = cluster;
 		this.name = name;
 		this.variable = variable;
 	}
@@ -97,32 +106,41 @@ class VariableNode<V> {
 export class AutomaticConstraintCluster {
 	#nodes = new Map<string, VariableNode<any>>();
 
-	AddVariable<V>(name: string, variable: Variable<V>): boolean {
+	AddVariable<V>(name: string, variable: Variable<V>): VariableNode<V> | null {
 		if(this.#nodes.has(name))
-			return false;
-		this.#nodes.set(name, new VariableNode(name, variable));
-		return true;
-	}
-	GetVariable<V>(name: string): VariableNode<V> | null {
-		if(!this.#nodes.has(name))
 			return null;
-		return this.#nodes.get(name)!;
+		const node = new VariableNode(this, name, variable);
+		this.#nodes.set(name, node);
+		return node;
+	}
+	FindVariable<V>(name: string | VariableNode<V>): VariableNode<V> | null {
+		if(name instanceof VariableNode) {
+			if(this.#nodes.get(name.name) !== name)
+				return null;
+			return name;
+		}
+		else {
+			if(!this.#nodes.has(name))
+				return null;
+			return this.#nodes.get(name)!;
+		}
 	}
 	AddConstraint<A, B>(
-		a: string, b: string,
+		a: string | VariableNode<A>, b: string | VariableNode<B>,
 		Cost: (a: A, b: B) => number,
 		aToB?: PropagatorConfig,
 		bToA?: PropagatorConfig,
 	): boolean {
-		if(a === b)
+		a = this.FindVariable<A>(a);
+		b = this.FindVariable<B>(b);
+		if(!a || !b)
 			return false;
-		const aNode = this.GetVariable<A>(a);
-		const bNode = this.GetVariable<B>(b);
-		if(!aNode || !bNode)
+		if(a as VariableNode<any> === b as VariableNode<any>)
 			return false;
+		const aNode = a, bNode = b;
 		return [
-			aNode.Connect(bNode, (b: B) => Cost(aNode.variable.value, b), aToB),
-			bNode.Connect(aNode, (a: A) => Cost(a, bNode.variable.value), bToA)
+			aNode.Connect(b, (b: B) => Cost(aNode.variable.value, b), aToB),
+			bNode.Connect(a, (a: A) => Cost(a, bNode.variable.value), bToA)
 		].reduce((a, b) => a && b, true);
 	}
 
@@ -140,13 +158,13 @@ export class AutomaticConstraintCluster {
 		}
 		return false;
 	}
-	SetVariable<V>(name: string, value: V): boolean {
-		const node = this.#nodes.get(name);
-		if(!node)
+	SetValue<V>(target: string | VariableNode<V>, value: V): boolean {
+		target = this.FindVariable(target);
+		if(!target)
 			return false;
-		node.variable.value = value;
-		const propagated = new Set<VariableNode<any>>([node]);
-		const wavefronts = new Set<Propagator<any>>(node.propagators.values());
+		target.variable.value = value;
+		const propagated = new Set<VariableNode<any>>([target]);
+		const wavefronts = new Set<Propagator<any>>(target.propagators.values());
 		while(wavefronts.size) {
 			const wavefront = wavefronts.values().next().value as Propagator<any>;
 			if(!this.#Propagate(wavefront))

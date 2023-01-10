@@ -44,10 +44,18 @@ const defaultPropagatorConfig = {
     maxStepCount: 1e3
 };
 class VariableNode {
+    cluster;
     name;
     variable;
     propagators = new Set();
-    constructor(name, variable) {
+    get value() {
+        return this.variable.value;
+    }
+    set value(value) {
+        this.cluster.SetValue(this, value);
+    }
+    constructor(cluster, name, variable) {
+        this.cluster = cluster;
         this.name = name;
         this.variable = variable;
     }
@@ -68,25 +76,34 @@ export class AutomaticConstraintCluster {
     #nodes = new Map();
     AddVariable(name, variable) {
         if (this.#nodes.has(name))
-            return false;
-        this.#nodes.set(name, new VariableNode(name, variable));
-        return true;
-    }
-    GetVariable(name) {
-        if (!this.#nodes.has(name))
             return null;
-        return this.#nodes.get(name);
+        const node = new VariableNode(this, name, variable);
+        this.#nodes.set(name, node);
+        return node;
+    }
+    FindVariable(name) {
+        if (name instanceof VariableNode) {
+            if (this.#nodes.get(name.name) !== name)
+                return null;
+            return name;
+        }
+        else {
+            if (!this.#nodes.has(name))
+                return null;
+            return this.#nodes.get(name);
+        }
     }
     AddConstraint(a, b, Cost, aToB, bToA) {
+        a = this.FindVariable(a);
+        b = this.FindVariable(b);
+        if (!a || !b)
+            return false;
         if (a === b)
             return false;
-        const aNode = this.GetVariable(a);
-        const bNode = this.GetVariable(b);
-        if (!aNode || !bNode)
-            return false;
+        const aNode = a, bNode = b;
         return [
-            aNode.Connect(bNode, (b) => Cost(aNode.variable.value, b), aToB),
-            bNode.Connect(aNode, (a) => Cost(a, bNode.variable.value), bToA)
+            aNode.Connect(b, (b) => Cost(aNode.variable.value, b), aToB),
+            bNode.Connect(a, (a) => Cost(a, bNode.variable.value), bToA)
         ].reduce((a, b) => a && b, true);
     }
     #Propagate(propagator) {
@@ -103,13 +120,13 @@ export class AutomaticConstraintCluster {
         }
         return false;
     }
-    SetVariable(name, value) {
-        const node = this.#nodes.get(name);
-        if (!node)
+    SetValue(target, value) {
+        target = this.FindVariable(target);
+        if (!target)
             return false;
-        node.variable.value = value;
-        const propagated = new Set([node]);
-        const wavefronts = new Set(node.propagators.values());
+        target.variable.value = value;
+        const propagated = new Set([target]);
+        const wavefronts = new Set(target.propagators.values());
         while (wavefronts.size) {
             const wavefront = wavefronts.values().next().value;
             if (!this.#Propagate(wavefront))
