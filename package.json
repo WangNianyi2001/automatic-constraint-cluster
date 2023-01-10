@@ -1,9 +1,9 @@
 {
 	"name": "@nianyi-wang/automatic-constraint-cluster",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"author": "Nianyi Wang<wangnianyi2001@outloook.com>",
 	"type": "module",
-	"main": "./build/main.mjs",
+	"main": "./build/index.mjs",
 	"files": [
 		"./build/**/*"
 	],
