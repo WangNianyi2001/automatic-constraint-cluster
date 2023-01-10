@@ -46,17 +46,18 @@ const defaultPropagatorConfig = {
 class VariableNode {
     name;
     variable;
-    propagators = new Map();
+    propagators = new Set();
     constructor(name, variable) {
         this.name = name;
         this.variable = variable;
     }
-    Connect(node, Cost, config = defaultPropagatorConfig) {
-        if (this.propagators.has(node))
-            return false;
-        this.propagators.set(node, {
-            from: this,
-            to: node,
+    Connect(target, Cost, config = defaultPropagatorConfig) {
+        for (const propagator of this.propagators) {
+            if (propagator.target === target)
+                return false;
+        }
+        this.propagators.add({
+            target,
             Cost,
             config
         });
@@ -71,22 +72,27 @@ export class AutomaticConstraintCluster {
         this.#nodes.set(name, new VariableNode(name, variable));
         return true;
     }
+    GetVariable(name) {
+        if (!this.#nodes.has(name))
+            return null;
+        return this.#nodes.get(name);
+    }
     AddConstraint(a, b, Cost, aToB, bToA) {
         if (a === b)
             return false;
-        if ([a, b].some(name => !this.#nodes.has(name)))
+        const aNode = this.GetVariable(a);
+        const bNode = this.GetVariable(b);
+        if (!aNode || !bNode)
             return false;
-        const [aNode, bNode] = [a, b].map(v => this.#nodes.get(v));
         return [
             aNode.Connect(bNode, (b) => Cost(aNode.variable.value, b), aToB),
             bNode.Connect(aNode, (a) => Cost(a, bNode.variable.value), bToA)
         ].reduce((a, b) => a && b, true);
     }
     #Propagate(propagator) {
-        const { to: { variable }, Cost, config } = propagator;
+        const { target: { variable }, Cost, config } = propagator;
         for (let stepCount = 0; stepCount < config.maxStepCount; ++stepCount) {
             const cost = Cost(variable.value);
-            console.log(`value=${variable.value}, cost=${cost}, maxError=${config.maxError}`);
             if (cost < config.maxError)
                 return true;
             // Move along gradient
@@ -108,11 +114,10 @@ export class AutomaticConstraintCluster {
             const wavefront = wavefronts.values().next().value;
             if (!this.#Propagate(wavefront))
                 return false;
-            console.log(`${wavefront.from.name}=${wavefront.from.variable.value} => ${wavefront.to.name}`);
-            propagated.add(wavefront.to);
+            propagated.add(wavefront.target);
             wavefronts.delete(wavefront);
-            for (const next of wavefront.to.propagators.values()) {
-                if (!propagated.has(next.to))
+            for (const next of wavefront.target.propagators.values()) {
+                if (!propagated.has(next.target))
                     wavefronts.add(next);
             }
         }

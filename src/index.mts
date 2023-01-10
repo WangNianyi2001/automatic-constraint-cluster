@@ -66,8 +66,7 @@ const defaultPropagatorConfig: PropagatorConfig = {
 };
 
 export declare interface Propagator<V> {
-	from: VariableNode<V>;
-	to: VariableNode<V>;
+	target: VariableNode<V>;
 	Cost: CostFunction<V>;
 	config: PropagatorConfig;
 }
@@ -75,18 +74,19 @@ export declare interface Propagator<V> {
 class VariableNode<V> {
 	readonly name: string;
 	readonly variable: Variable<V>;
-	readonly propagators = new Map<VariableNode<any>, Propagator<V>>();
+	readonly propagators = new Set<Propagator<any>>();
 
 	constructor(name: string, variable: Variable<V>) {
 		this.name = name;
 		this.variable = variable;
 	}
-	Connect(node: VariableNode<any>, Cost: CostFunction<V>, config: PropagatorConfig = defaultPropagatorConfig): boolean {
-		if(this.propagators.has(node))
-			return false;
-		this.propagators.set(node, {
-			from: this,
-			to: node,
+	Connect<_V>(target: VariableNode<_V>, Cost: CostFunction<_V>, config: PropagatorConfig = defaultPropagatorConfig): boolean {
+		for(const propagator of this.propagators) {
+			if(propagator.target === target)
+				return false;
+		}
+		this.propagators.add({
+			target,
 			Cost,
 			config
 		});
@@ -103,6 +103,11 @@ export class AutomaticConstraintCluster {
 		this.#nodes.set(name, new VariableNode(name, variable));
 		return true;
 	}
+	GetVariable<V>(name: string): VariableNode<V> | null {
+		if(!this.#nodes.has(name))
+			return null;
+		return this.#nodes.get(name)!;
+	}
 	AddConstraint<A, B>(
 		a: string, b: string,
 		Cost: (a: A, b: B) => number,
@@ -111,9 +116,10 @@ export class AutomaticConstraintCluster {
 	): boolean {
 		if(a === b)
 			return false;
-		if([a, b].some(name => !this.#nodes.has(name)))
+		const aNode = this.GetVariable<A>(a);
+		const bNode = this.GetVariable<B>(b);
+		if(!aNode || !bNode)
 			return false;
-		const [aNode, bNode] = [a, b].map(v => this.#nodes.get(v));
 		return [
 			aNode.Connect(bNode, (b: B) => Cost(aNode.variable.value, b), aToB),
 			bNode.Connect(aNode, (a: A) => Cost(a, bNode.variable.value), bToA)
@@ -121,7 +127,7 @@ export class AutomaticConstraintCluster {
 	}
 
 	#Propagate(propagator: Propagator<any>) {
-		const { to: { variable }, Cost, config } = propagator;
+		const { target: { variable }, Cost, config } = propagator;
 		for(let stepCount = 0; stepCount < config.maxStepCount; ++stepCount) {
 			const cost = Cost(variable.value);
 			if(cost < config.maxError)
@@ -145,10 +151,10 @@ export class AutomaticConstraintCluster {
 			const wavefront = wavefronts.values().next().value as Propagator<any>;
 			if(!this.#Propagate(wavefront))
 				return false;
-			propagated.add(wavefront.to);
+			propagated.add(wavefront.target);
 			wavefronts.delete(wavefront);
-			for(const next of wavefront.to.propagators.values()) {
-				if(!propagated.has(next.to))
+			for(const next of wavefront.target.propagators.values()) {
+				if(!propagated.has(next.target))
 					wavefronts.add(next);
 			}
 		}

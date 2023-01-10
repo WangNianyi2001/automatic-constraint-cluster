@@ -10,8 +10,6 @@
 		"clean": "rm -rf ./build",
 		"prebuild": "npm run clean",
 		"build": "npx tsc",
-		"buildtest": "npx tsc --project ./test/tsconfig.json",
-		"pretest": "npm run buildtest",
 		"test": "node test/index.mjs"
 	},
 	"devDependencies": {

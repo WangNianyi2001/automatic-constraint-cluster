@@ -23,21 +23,21 @@ export declare interface PropagatorConfig {
     maxStepCount: number;
 }
 export declare interface Propagator<V> {
-    from: VariableNode<V>;
-    to: VariableNode<V>;
+    target: VariableNode<V>;
     Cost: CostFunction<V>;
     config: PropagatorConfig;
 }
 declare class VariableNode<V> {
     readonly name: string;
     readonly variable: Variable<V>;
-    readonly propagators: Map<VariableNode<any>, Propagator<V>>;
+    readonly propagators: Set<Propagator<any>>;
     constructor(name: string, variable: Variable<V>);
-    Connect(node: VariableNode<any>, Cost: CostFunction<V>, config?: PropagatorConfig): boolean;
+    Connect<_V>(target: VariableNode<_V>, Cost: CostFunction<_V>, config?: PropagatorConfig): boolean;
 }
 export declare class AutomaticConstraintCluster {
     #private;
     AddVariable<V>(name: string, variable: Variable<V>): boolean;
+    GetVariable<V>(name: string): VariableNode<V> | null;
     AddConstraint<A, B>(a: string, b: string, Cost: (a: A, b: B) => number, aToB?: PropagatorConfig, bToA?: PropagatorConfig): boolean;
     SetVariable<V>(name: string, value: V): boolean;
 }
